@@ -22,6 +22,11 @@ func main() {
 			panic(err)
 		}
 		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", r.RequestLine.Method, r.RequestLine.RequestTarget, r.RequestLine.HttpVersion)
+
+		fmt.Println("Headers:")
+		r.Headers.ForEach(func(n, v string) {
+			fmt.Printf("%s: %s\n", n, v)
+		})
 	}
 
 }
