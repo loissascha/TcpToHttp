@@ -53,7 +53,6 @@ outer:
 
 			// not enough data yet, keep on parsing
 			if n == 0 {
-				r.state = StateError
 				break outer
 			}
 
@@ -69,11 +68,7 @@ outer:
 }
 
 func (r *Request) done() bool {
-	return r.state == StateDone
-}
-
-func (r *Request) error() bool {
-	return r.state == StateError
+	return r.state == StateDone || r.state == StateError
 }
 
 func parseRequestLine(b []byte) (*RequestLine, int, error) {
@@ -87,7 +82,7 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 
 	parts := bytes.Split(startLine, []byte(" "))
 	if len(parts) != 3 {
-		return nil, 0, ERROR_BAD_STARTLINE
+		return nil, 0, nil
 	}
 
 	httpParts := bytes.Split(parts[2], []byte("/"))
@@ -111,7 +106,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	// or the body
 	buf := make([]byte, 1024)
 	bufLen := 0
-	for !request.done() && !request.error() {
+	for !request.done() {
 		n, err := reader.Read(buf[bufLen:])
 
 		// TODO: what to do here?
