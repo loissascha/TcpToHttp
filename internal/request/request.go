@@ -17,10 +17,6 @@ type RequestLine struct {
 	Method        string
 }
 
-func (r *RequestLine) ValidHTTP() bool {
-	return r.HttpVersion == "1.1"
-}
-
 var ERROR_BAD_STARTLINE = fmt.Errorf("bad request line")
 var ERROR_UNSUPPORTED_HTTP_VERSION = fmt.Errorf("unsupported http version")
 var ERROR_INCOMPLETE_STARTLINE = fmt.Errorf("incomplete request line")
@@ -49,10 +45,6 @@ func parseRequestLine(b string) (*RequestLine, string, error) {
 		Method:        parts[0],
 		RequestTarget: parts[1],
 		HttpVersion:   httpParts[1],
-	}
-
-	if !rl.ValidHTTP() {
-		return nil, restOfMessage, ERROR_UNSUPPORTED_HTTP_VERSION
 	}
 
 	return rl, restOfMessage, nil
