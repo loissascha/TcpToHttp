@@ -26,7 +26,7 @@ func TestHeaderParse(t *testing.T) {
 	n, done, err = headers.Parse(data)
 	require.NoError(t, err)
 	require.NotNil(t, headers)
-	assert.Equal(t, "SomePerson1, AnotherPerson", headers.Get("set-Person"))
+	assert.Equal(t, "SomePerson1,AnotherPerson", headers.Get("set-Person"))
 	assert.Equal(t, 58, n)
 	assert.True(t, done)
 
