@@ -46,6 +46,11 @@ func (h *Headers) Parse(data []byte) (int, bool, error) {
 		if err != nil {
 			return 0, false, err
 		}
+
+		if !isToken([]byte(name)) {
+			return 0, false, fmt.Errorf("malformed header name")
+		}
+
 		read += idx + len(CRLF)
 		h.Set(name, value)
 	}
@@ -65,4 +70,24 @@ func parseHeader(fieldLine []byte) (string, string, error) {
 		return "", "", fmt.Errorf("malformed field name")
 	}
 	return string(name), string(value), nil
+}
+
+func isToken(str []byte) bool {
+	for _, ch := range str {
+		found := false
+		if ch >= 'A' && ch <= 'Z' ||
+			ch >= 'a' && ch <= 'z' ||
+			ch >= '0' && ch <= '9' {
+			found = true
+		}
+		switch ch {
+		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+			found = true
+		}
+
+		if !found {
+			return false
+		}
+	}
+	return true
 }
