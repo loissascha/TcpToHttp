@@ -1,15 +1,17 @@
 package request
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strings"
 )
 
-type Request struct {
-	RequestLine RequestLine
-}
+type parserState string
+
+const (
+	StateInit parserState = "init"
+	StateDone parserState = "done"
+)
 
 type RequestLine struct {
 	HttpVersion   string
@@ -17,15 +19,43 @@ type RequestLine struct {
 	Method        string
 }
 
+type Request struct {
+	RequestLine RequestLine
+	state       parserState
+}
+
+func newRequest() *Request {
+	return &Request{
+		state: StateInit,
+	}
+}
+
 var ERROR_BAD_STARTLINE = fmt.Errorf("bad request line")
 var ERROR_UNSUPPORTED_HTTP_VERSION = fmt.Errorf("unsupported http version")
 var ERROR_INCOMPLETE_STARTLINE = fmt.Errorf("incomplete request line")
 var SEPERATOR = "\r\n"
 
-func parseRequestLine(b string) (*RequestLine, string, error) {
+func (r *Request) parse(data []byte) (int, error) {
+	read := 0
+outer:
+	for {
+		switch r.state {
+		case StateInit:
+		case StateDone:
+			break outer
+		}
+	}
+	return read, nil
+}
+
+func (r *Request) done() bool {
+	return r.state == StateDone
+}
+
+func parseRequestLine(b string) (*RequestLine, int, error) {
 	idx := strings.Index(b, SEPERATOR)
 	if idx == -1 {
-		return nil, b, ERROR_INCOMPLETE_STARTLINE
+		return nil, 0, ERROR_INCOMPLETE_STARTLINE
 	}
 
 	startLine := b[:idx]
@@ -51,16 +81,29 @@ func parseRequestLine(b string) (*RequestLine, string, error) {
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, errors.Join(fmt.Errorf("unable to io.ReadAll"), err)
+	request := newRequest()
+
+	// NOTE: buffer could get overrun... a header that exceeds 1k would do that...
+	// or the body
+	buf := make([]byte, 1024)
+	bufLen := 0
+	for !request.done() {
+		n, err := reader.Read(buf[bufLen:])
+
+		// TODO: what to do here?
+		if err != nil {
+			return nil, err
+		}
+
+		bufLen += n
+		readN, err := request.parse(buf[:bufLen+n])
+		if err != nil {
+			return nil, err
+		}
+
+		copy(buf, buf[readN:bufLen])
+		bufLen -= readN
 	}
 
-	str := string(data)
-
-	rl, _, err := parseRequestLine(str)
-	if err != nil {
-		return nil, err
-	}
-	return &Request{RequestLine: *rl}, err
+	return request, nil
 }
