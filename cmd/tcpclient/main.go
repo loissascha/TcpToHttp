@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 )
 
 func main() {
@@ -16,10 +17,15 @@ func main() {
 
 	fmt.Println("Connected to", serverAddr)
 
-	message := "Hello from Go client!\n"
+	message := "Hello from Go client!"
 
-	_, err = conn.Write([]byte(message))
-	if err != nil {
-		panic(err)
+	i := 0
+	for {
+		i++
+		_, err = fmt.Fprintf(conn, "%s%v\n", message, i)
+		if err != nil {
+			panic(err)
+		}
+		time.Sleep(1 * time.Second)
 	}
 }
