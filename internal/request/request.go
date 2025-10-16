@@ -1,16 +1,17 @@
 package request
 
 import (
+	"bytes"
 	"fmt"
 	"io"
-	"strings"
 )
 
 type parserState string
 
 const (
-	StateInit parserState = "init"
-	StateDone parserState = "done"
+	StateInit  parserState = "init"
+	StateDone  parserState = "done"
+	StateError parserState = "error"
 )
 
 type RequestLine struct {
@@ -33,14 +34,33 @@ func newRequest() *Request {
 var ERROR_BAD_STARTLINE = fmt.Errorf("bad request line")
 var ERROR_UNSUPPORTED_HTTP_VERSION = fmt.Errorf("unsupported http version")
 var ERROR_INCOMPLETE_STARTLINE = fmt.Errorf("incomplete request line")
-var SEPERATOR = "\r\n"
+var ERROR_PARSER_STATE_ERROR = fmt.Errorf("parser state error")
+var SEPERATOR = []byte("\r\n")
 
 func (r *Request) parse(data []byte) (int, error) {
 	read := 0
 outer:
 	for {
 		switch r.state {
+		case StateError:
+			return 0, ERROR_PARSER_STATE_ERROR
 		case StateInit:
+			rl, n, err := parseRequestLine(data[read:])
+			if err != nil {
+				r.state = StateError
+				return 0, err
+			}
+
+			// not enough data yet, keep on parsing
+			if n == 0 {
+				r.state = StateError
+				break outer
+			}
+
+			r.RequestLine = *rl
+			read += n
+			r.state = StateDone
+
 		case StateDone:
 			break outer
 		}
@@ -52,32 +72,36 @@ func (r *Request) done() bool {
 	return r.state == StateDone
 }
 
-func parseRequestLine(b string) (*RequestLine, int, error) {
-	idx := strings.Index(b, SEPERATOR)
+func (r *Request) error() bool {
+	return r.state == StateError
+}
+
+func parseRequestLine(b []byte) (*RequestLine, int, error) {
+	idx := bytes.Index(b, SEPERATOR)
 	if idx == -1 {
-		return nil, 0, ERROR_INCOMPLETE_STARTLINE
+		return nil, 0, nil
 	}
 
 	startLine := b[:idx]
-	restOfMessage := b[idx+len(SEPERATOR):]
+	read := idx + len(SEPERATOR)
 
-	parts := strings.Split(startLine, " ")
+	parts := bytes.Split(startLine, []byte(" "))
 	if len(parts) != 3 {
-		return nil, restOfMessage, ERROR_BAD_STARTLINE
+		return nil, 0, ERROR_BAD_STARTLINE
 	}
 
-	httpParts := strings.Split(parts[2], "/")
-	if len(httpParts) != 2 || httpParts[0] != "HTTP" {
-		return nil, restOfMessage, ERROR_BAD_STARTLINE
+	httpParts := bytes.Split(parts[2], []byte("/"))
+	if len(httpParts) != 2 || string(httpParts[0]) != "HTTP" || string(httpParts[1]) != "1.1" {
+		return nil, 0, ERROR_BAD_STARTLINE
 	}
 
 	rl := &RequestLine{
-		Method:        parts[0],
-		RequestTarget: parts[1],
-		HttpVersion:   httpParts[1],
+		Method:        string(parts[0]),
+		RequestTarget: string(parts[1]),
+		HttpVersion:   string(httpParts[1]),
 	}
 
-	return rl, restOfMessage, nil
+	return rl, read, nil
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
@@ -87,7 +111,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	// or the body
 	buf := make([]byte, 1024)
 	bufLen := 0
-	for !request.done() {
+	for !request.done() && !request.error() {
 		n, err := reader.Read(buf[bufLen:])
 
 		// TODO: what to do here?
