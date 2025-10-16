@@ -3,31 +3,30 @@ package headers
 import (
 	"bytes"
 	"fmt"
+	"strings"
 )
 
 var CRLF = []byte("\r\n")
 
-type Headers map[string]string
+type Headers struct {
+	headers map[string]string
+}
 
 func NewHeaders() Headers {
-	return Headers{}
+	return Headers{
+		headers: map[string]string{},
+	}
 }
 
-func parseHeader(fieldLine []byte) (string, string, error) {
-	parts := bytes.SplitN(fieldLine, []byte(":"), 2)
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("malformed field line")
-	}
-
-	name := parts[0]
-	value := bytes.TrimSpace(parts[1])
-	if bytes.HasSuffix(name, []byte(" ")) || bytes.HasPrefix(name, []byte(" ")) {
-		return "", "", fmt.Errorf("malformed field name")
-	}
-	return string(name), string(value), nil
+func (h *Headers) Get(name string) string {
+	return h.headers[strings.ToLower(name)]
 }
 
-func (h Headers) Parse(data []byte) (int, bool, error) {
+func (h *Headers) Set(name string, value string) {
+	h.headers[strings.ToLower(name)] = value
+}
+
+func (h *Headers) Parse(data []byte) (int, bool, error) {
 	read := 0
 	done := false
 	for {
@@ -48,8 +47,22 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 			return 0, false, err
 		}
 		read += idx + len(CRLF)
-		h[name] = value
+		h.Set(name, value)
 	}
 
 	return read, done, nil
+}
+
+func parseHeader(fieldLine []byte) (string, string, error) {
+	parts := bytes.SplitN(fieldLine, []byte(":"), 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("malformed field line")
+	}
+
+	name := parts[0]
+	value := bytes.TrimSpace(parts[1])
+	if bytes.HasSuffix(name, []byte(" ")) || bytes.HasPrefix(name, []byte(" ")) {
+		return "", "", fmt.Errorf("malformed field name")
+	}
+	return string(name), string(value), nil
 }
