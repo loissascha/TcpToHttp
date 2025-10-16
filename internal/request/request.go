@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"tcpToHttp/internal/headers"
 )
 
 type parserState string
 
 const (
-	StateInit  parserState = "init"
-	StateDone  parserState = "done"
-	StateError parserState = "error"
+	StateInit    parserState = "init"
+	StateHeaders parserState = "headers"
+	StateDone    parserState = "done"
+	StateError   parserState = "error"
 )
 
 type RequestLine struct {
@@ -23,11 +25,14 @@ type RequestLine struct {
 type Request struct {
 	RequestLine RequestLine
 	state       parserState
+	Headers     *headers.Headers
 }
 
 func newRequest() *Request {
+	h := headers.NewHeaders()
 	return &Request{
-		state: StateInit,
+		state:   StateInit,
+		Headers: &h,
 	}
 }
 
@@ -41,11 +46,13 @@ func (r *Request) parse(data []byte) (int, error) {
 	read := 0
 outer:
 	for {
+		currentData := data[read:]
+
 		switch r.state {
 		case StateError:
 			return 0, ERROR_PARSER_STATE_ERROR
 		case StateInit:
-			rl, n, err := parseRequestLine(data[read:])
+			rl, n, err := parseRequestLine(currentData)
 			if err != nil {
 				r.state = StateError
 				return 0, err
@@ -58,10 +65,32 @@ outer:
 
 			r.RequestLine = *rl
 			read += n
-			r.state = StateDone
+			r.state = StateHeaders
+
+		case StateHeaders:
+
+			n, done, err := r.Headers.Parse(currentData)
+			if err != nil {
+				r.state = StateError
+				return 0, err
+			}
+
+			// keep parsing
+			if n == 0 {
+				break outer
+			}
+
+			read += n
+
+			if done {
+				r.state = StateDone
+			}
 
 		case StateDone:
 			break outer
+
+		default:
+			panic("somehow we have programmed poorly")
 		}
 	}
 	return read, nil
@@ -120,7 +149,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			return nil, err
 		}
 
-		copy(buf, buf[readN:bufLen])
+		copy(buf, buf[readN:readN+bufLen])
 		bufLen -= readN
 	}
 
