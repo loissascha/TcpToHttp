@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
+	"strconv"
 	"tcpToHttp/internal/headers"
 )
 
@@ -12,6 +14,7 @@ type parserState string
 const (
 	StateInit    parserState = "init"
 	StateHeaders parserState = "headers"
+	StateBody    parserState = "body"
 	StateDone    parserState = "done"
 	StateError   parserState = "error"
 )
@@ -26,6 +29,25 @@ type Request struct {
 	RequestLine RequestLine
 	state       parserState
 	Headers     *headers.Headers
+	Body        string
+}
+
+func (r *Request) hasBody() bool {
+	// TODO: when doing chunked encoding, update this method
+	length := getIntHeader(r.Headers, "content-length", 0)
+	return length != 0
+}
+
+func getIntHeader(headers *headers.Headers, name string, defaultValue int) int {
+	valueStr, exists := headers.Get(name)
+	if !exists {
+		return defaultValue
+	}
+	value, err := strconv.Atoi(valueStr)
+	if err != nil {
+		return defaultValue
+	}
+	return value
 }
 
 func newRequest() *Request {
@@ -33,6 +55,7 @@ func newRequest() *Request {
 	return &Request{
 		state:   StateInit,
 		Headers: &h,
+		Body:    "",
 	}
 }
 
@@ -47,6 +70,9 @@ func (r *Request) parse(data []byte) (int, error) {
 outer:
 	for {
 		currentData := data[read:]
+		if len(currentData) == 0 {
+			break outer
+		}
 
 		switch r.state {
 		case StateError:
@@ -83,6 +109,26 @@ outer:
 			read += n
 
 			if done {
+				if r.hasBody() {
+					r.state = StateBody
+				} else {
+					r.state = StateDone
+				}
+			}
+
+		case StateBody:
+			length := getIntHeader(r.Headers, "content-length", 0)
+			if length == 0 {
+				panic("chunked not implemented")
+			}
+
+			remaining := min(length-len(r.Body), len(currentData))
+			r.Body += string(currentData[:remaining])
+			read += remaining
+
+			// slog.Info("parseState#StateBody", "remaining", remaining, "body", r.Body, "read", read)
+
+			if len(r.Body) == length {
 				r.state = StateDone
 			}
 
@@ -136,6 +182,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, 1024)
 	bufLen := 0
 	for !request.done() {
+		slog.Info("RequestFromHeader", "state", request.state, "bufLen", bufLen)
 		n, err := reader.Read(buf[bufLen:])
 
 		// TODO: what to do here?
@@ -151,6 +198,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 		copy(buf, buf[readN:readN+bufLen])
 		bufLen -= readN
+
+		slog.Info("RequestFromHeader", "newBufLen", bufLen, "n", n, "readN", readN)
 	}
 
 	return request, nil
